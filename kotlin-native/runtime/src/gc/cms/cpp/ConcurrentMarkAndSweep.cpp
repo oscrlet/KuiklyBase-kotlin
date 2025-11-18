@@ -140,6 +140,7 @@ void gc::ConcurrentMarkAndSweep::PerformFullGC(int64_t epoch) noexcept {
     GCLogDebug(epoch, "Main GC requested marking in mutators");
 
     stopTheWorld(gcHandle, "GC stop the world #1: collect root set");
+    allocator_.onStartGC();
 
     auto& scheduler = gcScheduler_;
     scheduler.onGCStart();
@@ -228,6 +229,8 @@ void gc::ConcurrentMarkAndSweep::PerformFullGC(int64_t epoch) noexcept {
     // region Tencent Code
     allocator_.onFinishGC();
     // endregion
+
+    allocator_.onFinishGC();
 
     if (!mainThreadFinalizerProcessor_.available()) {
         finalizerQueue.mergeIntoRegular();

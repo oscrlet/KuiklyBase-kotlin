@@ -49,6 +49,7 @@ public:
 
     static NextFitPage* Create(uint32_t cellCount) noexcept;
 
+    void Dump(std::ostream &out);
     void Destroy() noexcept;
 
     // Tries to allocate in current page, returns null if no free block in page is big enough

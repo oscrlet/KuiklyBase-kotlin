@@ -60,6 +60,7 @@ public:
     PageSizeInfo getPageSize();
     // endregion
 
+    void Dump(std::ostream &out) override;
 private:
     ExtraObjectPage() noexcept;
 

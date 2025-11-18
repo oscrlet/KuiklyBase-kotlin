@@ -7,7 +7,9 @@
 #define CUSTOM_ALLOC_CPP_ALLOCATOR_HPP_
 
 #include <atomic>
+#include <cstdio>
 #include <cstring>
+#include <iostream>
 
 #include "ExtraObjectData.hpp"
 #include "ExtraObjectPage.hpp"
@@ -15,6 +17,7 @@
 #include "NextFitPage.hpp"
 #include "Memory.h"
 #include "FixedBlockPage.hpp"
+#include "SingleObjectPage.hpp"
 
 namespace kotlin::alloc {
 
@@ -61,6 +64,7 @@ private:
     FixedBlockPage* fixedBlockPages_[FixedBlockPage::MAX_BLOCK_SIZE + 1];
     ExtraObjectPage* extraObjectPage_;
     FinalizerQueue finalizerQueue_;
+    uint32_t mergeCellSize = 5;
 };
 
 } // namespace kotlin::alloc

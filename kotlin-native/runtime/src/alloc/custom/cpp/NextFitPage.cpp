@@ -20,6 +20,18 @@ NextFitPage* NextFitPage::Create(uint32_t cellCount) noexcept {
     return new (SafeAlloc(SIZE)) NextFitPage(cellCount);
 }
 
+void NextFitPage::Dump(std::ostream& out) {
+    // out << "NextFitPage" << std::endl;
+    auto allocated = GetAllocatedSizeBytes();
+    if (allocated == 0) {
+        out << "-";
+    } else if (allocated == SIZE - sizeof(NextFitPage)) {
+        out << "+";
+    } else {
+        out << "(" << allocated * 100 / (SIZE - sizeof(NextFitPage)) << "%)";
+    }
+}
+
 void NextFitPage::Destroy() noexcept {
     Free(this, SIZE);
 }

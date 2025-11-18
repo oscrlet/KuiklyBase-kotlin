@@ -53,6 +53,7 @@ public:
     size_t getSize();
     // endregion
 
+    void Dump(std::ostream &out) override;
 private:
     friend class Heap;
 

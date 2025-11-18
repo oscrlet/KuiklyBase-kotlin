@@ -22,6 +22,23 @@ FixedBlockPage* FixedBlockPage::Create(uint32_t blockSize) noexcept {
     return new (SafeAlloc(SIZE)) FixedBlockPage(blockSize);
 }
 
+void FixedBlockPage::Dump(std::ostream& out) {
+    // out << "FixedBlockPage(" << this << ") blockSize=" << blockSize_ << " allocatedBlocks=";
+    // out << "FixedBlockPage(" << std::endl;
+    int blocks = end_ / blockSize_;
+    auto allocatedBlocks = 0;
+    TraverseAllocatedBlocks([&allocatedBlocks](auto *data) {
+        ++allocatedBlocks;
+    });
+    if (allocatedBlocks == blocks) {
+        out << "+";
+    } else if (allocatedBlocks == 0) {
+        out << "-";
+    } else {
+        out << "(" << allocatedBlocks * 100 / blocks << "%)";
+    }
+}
+
 void FixedBlockPage::Destroy() noexcept {
     Free(this, SIZE);
 }

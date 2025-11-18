@@ -31,6 +31,22 @@ ExtraObjectPage::ExtraObjectPage() noexcept {
     }
 }
 
+void ExtraObjectPage::Dump(std::ostream& out) {
+    ExtraObjectCell* end = cells_ + extraObjectCount();
+    std::atomic<ExtraObjectCell*>* nextFree = &nextFree_;
+    auto size = nextFree->load() - cells_;
+    for (auto cell = nextFree->load(); cell < end; cell = cell->next_, nextFree = &cell->next_) {
+        size += nextFree->load() - cell;
+    }
+    if (size == end - cells_) {
+        out << "+";
+    } else if (size == 0) {
+        out << "-";
+    } else {
+        out << "(" << size * 100 / (end - cells_) << "%)";
+    }
+}
+
 void ExtraObjectPage::Destroy() noexcept {
     Free(this, SIZE);
 }

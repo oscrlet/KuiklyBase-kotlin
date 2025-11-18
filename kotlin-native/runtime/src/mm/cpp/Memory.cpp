@@ -417,6 +417,7 @@ extern "C" KDouble Kotlin_native_internal_GC_getTargetHeapUtilization(ObjHeader*
 extern "C" void Kotlin_native_internal_GC_setTargetHeapUtilization(ObjHeader*, KDouble value) {
     RuntimeAssert(value > 0 && value <= 1, "Must be handled by the caller");
     mm::GlobalData::Instance().gcScheduler().config().targetHeapUtilization = value;
+    RuntimeLogInfo({kTagGC}, "targetHeapUtilization: %f", value);
 }
 
 extern "C" KLong Kotlin_native_internal_GC_getMaxHeapBytes(ObjHeader*) {

@@ -17,6 +17,12 @@
 
 namespace kotlin::gcScheduler::internal {
 
+#ifdef KONAN_OHOS
+static constexpr const char* fileConfigDir = "/data/storage/el2/base/files/";
+#else
+static constexpr const char* fileConfigDir = "/Users/bytedance/log/";
+#endif
+
 class HeapGrowthController {
 public:
     enum class MemoryBoundary {
@@ -61,7 +67,7 @@ public:
             }
             double minHeapBytes = static_cast<double>(config_.minHeapBytes.load(std::memory_order_relaxed));
             double maxHeapBytes = static_cast<double>(config_.maxHeapBytes.load(std::memory_order_relaxed));
-            
+
             targetHeapBytes = std::min(std::max(targetHeapBytes, minHeapBytes), maxHeapBytes);
             triggerHeapBytes_ = static_cast<size_t>(targetHeapBytes * config_.heapTriggerCoefficient.load(std::memory_order_relaxed));
             config_.targetHeapBytes.store(static_cast<int64_t>(targetHeapBytes), std::memory_order_relaxed);
@@ -69,7 +75,7 @@ public:
         } else {
             targetHeapBytes_ = config_.targetHeapBytes.load(std::memory_order_relaxed);
         }
-        RuntimeLogInfo({logging::Tag::kGCScheduler},
+        RuntimeLogInfo({kTagGC},
                        "Updated heap boundaries: base %zu, alive %zu, target %zu, trigger %zu", baseValue, aliveBytes, targetHeapBytes_, triggerHeapBytes_);
     }
 

@@ -27,6 +27,17 @@ SingleObjectPage::SingleObjectPage(size_t size) noexcept : size_(size),
 }
 // endregion
 
+void SingleObjectPage::Dump(std::ostream& out) {
+    // Only one object, so check if it's allocated.
+    auto* object = reinterpret_cast<CustomHeapObject*>(data_)->object();
+    bool alive = false;
+    if (object) {
+        // Heuristic: check if marked or if typeinfo looks valid, etc.
+        alive = true; // Or use your GC marking if available
+    }
+    out << (alive ? "+" : "-");
+}
+
 void SingleObjectPage::Destroy() noexcept {
     Free(this, size_);
 }

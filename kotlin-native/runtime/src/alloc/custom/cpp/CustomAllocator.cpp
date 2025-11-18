@@ -18,6 +18,7 @@
 #include "ExtraObjectPage.hpp"
 #include "GC.hpp"
 #include "GCScheduler.hpp"
+#include "Heap.hpp"
 #include "KAssert.h"
 #include "SingleObjectPage.hpp"
 #include "NextFitPage.hpp"
@@ -27,9 +28,32 @@
 
 namespace kotlin::alloc {
 
+void loadFromFile(const std::string& filename, uint32_t &result) {
+    static bool loaded = false;
+    if (loaded) return;
+    std::ifstream fin(filename);
+    if (!fin.is_open()) return;
+
+    std::string line;
+    while (std::getline(fin, line)) {
+        // 简单清理处理
+        line.erase(std::remove_if(line.begin(), line.end(), ::isspace), line.end());
+        if (line.empty() || line[0] == '#') continue;
+
+        auto delim_pos = line.find('=');
+        if (delim_pos == std::string::npos) continue;
+        std::string key = line.substr(0, delim_pos);
+        std::string value = line.substr(delim_pos + 1);
+
+        if (key == "mergeCellSize") result = std::stoul(value);
+    }
+}
+
 CustomAllocator::CustomAllocator(Heap& heap) noexcept : heap_(heap), nextFitPage_(nullptr), extraObjectPage_(nullptr) {
     CustomAllocInfo("CustomAllocator::CustomAllocator(heap)");
     memset(fixedBlockPages_, 0, sizeof(fixedBlockPages_));
+    loadFromFile(std::string(fileDumpDir) + "gc.conf", mergeCellSize);
+    RuntimeLogInfo({kTagGC}, "merge cell size: %ul,", mergeCellSize);
 }
 
 CustomAllocator::~CustomAllocator() {
@@ -124,6 +148,7 @@ NO_INLINE uint8_t* CustomAllocator::AllocateInNextFitPageSlowPath(uint32_t cellC
 
 ALWAYS_INLINE uint8_t* CustomAllocator::AllocateInFixedBlockPage(uint32_t cellCount) noexcept {
     CustomAllocDebug("CustomAllocator::AllocateInFixedBlockPage(%u)", cellCount);
+    cellCount = cellCount < mergeCellSize ? mergeCellSize : cellCount;
     FixedBlockPage* page = fixedBlockPages_[cellCount];
     if (page) {
         uint8_t* block = page->TryAllocate(cellCount);

@@ -7,8 +7,20 @@
 #define CUSTOM_ALLOC_CPP_HEAP_HPP_
 
 #include <atomic>
+#include <fstream>
 #include <mutex>
 #include <cstring>
+#include <chrono>
+#include <condition_variable>
+#include <cstdint>
+#include <mutex>
+#include <ostream>
+#include <string>
+#include <thread>
+#include <vector>
+#include <iostream>
+#include <sstream>
+
 
 #include "AtomicStack.hpp"
 #include "ExtraObjectPage.hpp"
@@ -22,6 +34,119 @@
 #include "GCApi.hpp"
 
 namespace kotlin::alloc {
+
+static ALWAYS_INLINE void AddHeapDumpWithTimestamp(std::ostream& out, std::chrono::steady_clock::time_point currentTime){
+    out << std::chrono::duration_cast<std::chrono::microseconds>(currentTime.time_since_epoch()).count() << ", "
+        << allocatedBytes() << std::endl;
+}
+
+#ifdef KONAN_OHOS
+static constexpr const char* fileDumpDir = "/data/storage/el2/base/files/";
+#else
+static constexpr const char* fileDumpDir = "/Users/bytedance/log/";
+#endif
+
+class HeapUsageTracer {
+public:
+    // Singleton
+    static HeapUsageTracer& Instance(const std::stringstream &pageDumpRef) {
+        static HeapUsageTracer instance(pageDumpRef);
+        return instance;
+    }
+
+    HeapUsageTracer(const std::stringstream &pageDumpRef) : pageDump(pageDumpRef) {
+        start();
+    }
+
+    void start() {
+        stopRequested_ = false;
+        heapDump.open(std::string(fileDumpDir) + "memdump.log", std::ios::out);
+        heapDump << "phase1: heap use" << std::endl;
+        // Only start if not already running
+        if (tracingThread_.joinable()) return;
+        tracingThread_ = std::thread([this] { run(); });
+    }
+
+    void stop() {
+        stopRequested_ = true;
+        cv_.notify_all();
+        if (tracingThread_.joinable())
+            tracingThread_.join();
+        dumpAll_ = true;
+        dump();
+    }
+
+    bool isFileContentOne(const std::string& filename) {
+        std::ifstream file(filename);
+        if (!file) return false;
+
+        std::string content;
+        file >> content;
+        auto result = content == "1";
+        return result;
+    }
+
+    bool dumpAll() {
+        if (dumpAll_) {
+            return true;
+        }
+        if (!isFileContentOne(std::string(fileDumpDir) + "control.log")) {
+            return false;
+        }
+        dumpAll_ = true;
+        return dumpAll_;
+    }
+
+    void dump() {
+        if (dumpFinish) return;
+        static size_t current = 0;
+        // size_t max = 0;
+        // for (const auto& e : events_) if (e.bytes > max) max = e.bytes;
+        auto end = events_.size();
+        for (auto i = current; i < end; ++i) {
+            heapDump << events_[i].timeStamp << ","
+                << events_[i].bytes << std::endl;
+        }
+        current = end;
+        if (dumpAll()) {
+            dumpFinish = true;
+            heapDump << pageDump.str();
+        }
+    }
+
+    ~HeapUsageTracer() { stop(); }
+
+private:
+    struct Event {
+        size_t bytes;
+        std::chrono::steady_clock::rep timeStamp;
+    };
+
+    void run() {
+        auto next = std::chrono::steady_clock::now();
+        while (!stopRequested_) {
+            next += std::chrono::microseconds(100);
+            size_t bytes = allocatedBytes();
+            {
+                events_.push_back({bytes, std::chrono::duration_cast<std::chrono::microseconds>(next.time_since_epoch()).count()});
+            }
+            next += std::chrono::microseconds(100);
+            std::unique_lock<std::mutex> lock(cvMutex_);
+            cv_.wait_until(lock, next, [this]() { return stopRequested_.load(); });
+        }
+    }
+
+    std::vector<Event> events_;
+    // std::mutex mutex_;
+    std::atomic<bool> stopRequested_{false};
+    std::thread tracingThread_;
+    std::condition_variable cv_;
+    std::mutex cvMutex_;
+    std::fstream heapDump;
+    const std::stringstream &pageDump;
+    bool dumpAll_ = false;
+    bool dumpFinish = false;
+};
 
 class Heap {
 public:
@@ -146,6 +271,43 @@ public:
                       const std::function<void(PageType*)>& extraHandler = {});
     // endregion
 
+    void Dump(std::string prefix = "") {
+        if (dumpEnabled == false) return;
+        if (pageDumpCount == 1) {
+            pageDumpStore << "phase2: page dump" << std::endl;
+        }
+        pageDumpStore << "----------------------------" << prefix << " " << (pageDumpCount - 1)/2 << " ----------------------------" << std::endl;
+        pageDumpStore << "Heap Dump at: ";
+        AddHeapDumpWithTimestamp(pageDumpStore, std::chrono::steady_clock::now());
+
+        auto pageDump = [this] (auto *page) {
+            if (page) {
+                page->Dump(pageDumpStore);
+            }
+        };
+        for (int blockSize = 0; blockSize <= FixedBlockPage::MAX_BLOCK_SIZE; ++blockSize) {
+            if (fixedBlockPages_[blockSize].GetPages().empty()) {
+                continue;
+            }
+            pageDumpStore << blockSize << ": ";
+            fixedBlockPages_[blockSize].TraversePages(pageDump);
+            pageDumpStore << std::endl;
+        }
+        pageDumpStore << "nextFitPages" << ": ";
+        nextFitPages_.TraversePages(pageDump);
+        pageDumpStore << std::endl;
+        pageDumpStore << "singleObjectPages" << ": ";
+        singleObjectPages_.TraversePages(pageDump);
+        pageDumpStore << std::endl;
+        pageDumpStore << "extraObjectPages" << ": ";
+        extraObjectPages_.TraversePages(pageDump);
+        pageDumpStore << std::endl;
+        if (pageDumpCount % 10 == 0) {
+            heapUsageTracer_.dump();
+        }
+        ++pageDumpCount;
+    }
+
 private:
     PageStore<FixedBlockPage> fixedBlockPages_[FixedBlockPage::MAX_BLOCK_SIZE + 1];
     PageStore<NextFitPage> nextFitPages_;
@@ -158,6 +320,10 @@ private:
     std::atomic<std::size_t> concurrentSweepersCount_ = 0;
 
     AllocatedSizeTracker::Heap allocatedSizeTracker_{};
+    std::stringstream pageDumpStore;  // 成员流，用于暂存字符串
+    HeapUsageTracer& heapUsageTracer_ = HeapUsageTracer::Instance(pageDumpStore);
+    bool dumpEnabled = true;
+    int pageDumpCount = 1;                   // 计数，记录输入次数
 };
 
 } // namespace kotlin::alloc

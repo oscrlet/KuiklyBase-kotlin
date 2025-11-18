@@ -8,6 +8,8 @@
 #include <atomic>
 #include <chrono>
 #include <cinttypes>
+#include <fstream>
+#include "RunLoopFinalizerProcessor.hpp"
 
 namespace kotlin::gcScheduler {
 
@@ -31,7 +33,7 @@ struct GCSchedulerConfig {
     // The rate at which `targetHeapBytes` changes when `autoTune = true`. Concretely: if after the collection
     // `N` object bytes remain in the heap, the next `targetHeapBytes` will be `N / targetHeapUtilization` capped
     // between `minHeapBytes` and `maxHeapBytes`.
-    std::atomic<double> targetHeapUtilization = 0.5;
+    std::atomic<double> targetHeapUtilization = 0.55;
     // The minimum value of `targetHeapBytes` for `autoTune = true`
     std::atomic<int64_t> minHeapBytes = 5 * 1024 * 1024; // In `custom` allocator pages are 256KiB. 5MiB here is 20 pages.
     // The maximum value of `targetHeapBytes` for `autoTune = true`
@@ -77,6 +79,48 @@ struct GCSchedulerConfig {
     void setMutatorAssists(bool assist) noexcept {
         mutatorAssistsImpl.store(
                 static_cast<std::underlying_type_t<MutatorAssists>>(assist ? MutatorAssists::kEnable : MutatorAssists::kDisable));
+    }
+
+    bool parseBool(const std::string& val) const {
+        return val == "true" || val == "True" || val == "1";
+    }
+
+    MutatorAssists parseMutatorAssists(const std::string& val) const {
+        if (val == "enable") return MutatorAssists::kEnable;
+        if (val == "disable") return MutatorAssists::kDisable;
+        return MutatorAssists::kDefault;
+    }
+
+    void loadFromFile(const std::string& filename) {
+        static bool loaded = false;
+        if (loaded) return;
+        std::ifstream fin(filename);
+        if (!fin.is_open()) return;
+
+        std::string line;
+        while (std::getline(fin, line)) {
+            // 简单清理处理
+            line.erase(std::remove_if(line.begin(), line.end(), ::isspace), line.end());
+            if (line.empty() || line[0] == '#') continue;
+
+            auto delim_pos = line.find('=');
+            if (delim_pos == std::string::npos) continue;
+            std::string key = line.substr(0, delim_pos);
+            std::string value = line.substr(delim_pos + 1);
+
+            if (key == "autoTune") autoTune.store(parseBool(value));
+            else if (key == "regularGcIntervalMicroseconds") regularGcIntervalMicroseconds.store(std::stoll(value));
+            else if (key == "targetHeapBytes") targetHeapBytes.store(std::stoll(value));
+            else if (key == "targetHeapUtilization") targetHeapUtilization.store(std::stod(value));
+            else if (key == "minHeapBytes") minHeapBytes.store(std::stoll(value));
+            else if (key == "maxHeapBytes") maxHeapBytes.store(std::stoll(value));
+            else if (key == "heapTriggerCoefficient") heapTriggerCoefficient.store(std::stod(value));
+            else if (key == "mutatorAssists")
+                mutatorAssistsImpl.store(static_cast<std::underlying_type_t<MutatorAssists>>(parseMutatorAssists(value)));
+        }
+        RuntimeLogInfo({kTagGC}, "GC Scheduler config loaded from %s", filename.c_str());
+        RuntimeLogInfo({kTagGC}, "targetHeapUtilization: %lf", targetHeapUtilization.load());
+        loaded = true;
     }
 };
 
