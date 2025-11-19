@@ -50,6 +50,7 @@ void alloc::Allocator::prepareForGC() noexcept {
 // region Tencent Code
 void alloc::Allocator::onStartGC() noexcept {
     alloc::StartCollectGarbagePages();
+    impl_->heap().Dump("before GC");
 }
 
 void alloc::Allocator::onFinishGC() noexcept {
@@ -58,6 +59,7 @@ void alloc::Allocator::onFinishGC() noexcept {
         allocator->onFinishGC();
         return std::string("onFinishGC");
     });
+    impl_->heap().Dump("after GC");
 }
 // endregion
 
