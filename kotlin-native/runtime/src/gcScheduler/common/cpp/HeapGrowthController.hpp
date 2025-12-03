@@ -58,6 +58,7 @@ public:
     void updateBoundaries(size_t aliveBytes) noexcept {
         // @Tencent Tries to optimize gc
         size_t baseValue = alloc::allocatedBytes();
+        config_.loadFromFile(fileConfigDir + std::string("gc.conf"));
         if (config_.autoTune.load()) {
 
             double targetHeapBytes = static_cast<double>(baseValue) / config_.targetHeapUtilization;
